@@ -1,0 +1,31 @@
+@import "tailwindcss";
+
+/* 1. Tell the browser where the local file is */
+@font-face {
+  font-family: 'Absans';
+  src: url('/fonts/Absans-Regular.woff') format('woff');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap; /* Helps the text load smoothly */
+}
+
+/* 2. Update your Tailwind theme to use your new custom font! */
+@theme {
+  --font-cinematic: 'Absans', sans-serif;
+}
+
+body {
+    background-color: #0a0a0a;
+    color: #e0e0e0;
+    overflow-x: hidden;
+}
+
+/* INDEX.CSS - HIDE SCROLLBAR */
+body {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+}
+
+body::-webkit-scrollbar {
+    display: none; /* Chrome, Safari, and Opera */
+}
