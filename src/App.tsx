@@ -274,7 +274,7 @@ function App() {
       ref={containerRef} 
       onClick={handleClick}
       onMouseMove={handleMouseMove} 
-      className={`bg-[#0a0a0a] text-[#e0e0e0] font-cinematic relative select-none h-screen overflow-hidden ${showClickPrompt && !hasClicked ? 'cursor-pointer' : ''} ${hasClicked && currentStanzaRef.current < totalStanzas ? 'cursor-pointer' : ''}`}
+      className={`bg-[#0a0a0a] text-[#e0e0e0] font-cinematic relative select-none h-[100dvh] overflow-hidden ${showClickPrompt && !hasClicked ? 'cursor-pointer' : ''} ${hasClicked && currentStanzaRef.current < totalStanzas ? 'cursor-pointer' : ''}`}
     >
       {/* THIS HIDES THE UGLY SIDE SCROLLBAR PERMANENTLY */}
       <style>{`
@@ -294,7 +294,7 @@ function App() {
       </div>
 
       {/* THE FIXED CAMERA PORTAL */}
-      <div className="fixed inset-0 w-full h-screen pointer-events-none">
+      <div className="fixed inset-0 w-full h-[100dvh] pointer-events-none">
         
         <section className="mountain-wrapper absolute inset-0 w-full h-full origin-center will-change-transform will-change-[filter]">
           <div className="mouse-layer absolute inset-0 w-full h-full will-change-transform" data-speed="-2">
