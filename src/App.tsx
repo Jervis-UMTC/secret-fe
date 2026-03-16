@@ -338,7 +338,7 @@ function App() {
 
         {/* THE INTRO QUOTE */}
         <div className="intro-container absolute inset-0 flex items-center justify-center z-10">
-          <h1 className="text-4xl md:text-5xl leading-relaxed tracking-wide text-center max-w-4xl px-10 flex flex-wrap justify-center gap-x-3 gap-y-2">
+          <h1 className="text-2xl sm:text-3xl md:text-5xl leading-relaxed tracking-wide text-center max-w-4xl px-4 sm:px-10 flex flex-wrap justify-center gap-x-2 sm:gap-x-3 gap-y-1 sm:gap-y-2">
             {introQuote.map((item, index) => (
               <span key={index} className="word-mask inline-block overflow-hidden pb-3">
                 <span className={`intro-word inline-block relative opacity-0 translate-y-[120%] ${item.type !== 'normal' ? item.type + ' pr-3' : ''}`}>
@@ -351,7 +351,7 @@ function App() {
         </div>
 
         {/* PRESS TO BEGIN PROMPT */}
-        <div className={`click-prompt absolute bottom-20 left-1/2 -translate-x-1/2 z-20 transition-opacity duration-1000 ${showClickPrompt && !hasClicked ? 'opacity-60' : 'opacity-0'}`}>
+        <div className={`click-prompt absolute bottom-12 sm:bottom-20 left-1/2 -translate-x-1/2 z-20 transition-opacity duration-1000 ${showClickPrompt && !hasClicked ? 'opacity-60' : 'opacity-0'}`}>
           <p className="text-sm uppercase tracking-[0.3em] animate-pulse">Continue</p>
         </div>
 
