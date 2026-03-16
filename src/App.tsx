@@ -1,9 +1,9 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { gsap } from 'gsap';
-import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useGSAP } from '@gsap/react';
 
-gsap.registerPlugin(useGSAP, ScrollTrigger);
+gsap.registerPlugin(useGSAP);
+gsap.defaults({ force3D: true }); // Hardware accelerates all GSAP animations
 
 // --- THE UPGRADED HELPER FUNCTION (Fixes the chopped underline!) ---
 const renderWords = (text: string, formatClass: string = "") => {
@@ -11,8 +11,8 @@ const renderWords = (text: string, formatClass: string = "") => {
     if (!word) return null;
     return (
       <React.Fragment key={index}>
-        {/* The animatable word */}
-        <span className={`letter-word inline-block opacity-0 translate-y-[15px] ${formatClass}`}>
+        {/* The animatable word — now with a soft cinematic text-glow! */}
+        <span className={`letter-word inline-block opacity-0 translate-y-[15px] drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] will-change-transform will-change-opacity ${formatClass}`}>
           {word}
         </span>
         {/* The space between words. It carries the formatClass so the underline connects! */}
@@ -32,16 +32,20 @@ function App() {
   const [loadProgress, setLoadProgress] = useState(0);
   const [showClickPrompt, setShowClickPrompt] = useState(false); 
   const [hasClicked, setHasClicked] = useState(false);           
+  const [showNextIndicator, setShowNextIndicator] = useState(false);
 
   const isAssembledRef = useRef(false);
+  const currentStanzaRef = useRef(-1); // -1 = not started, 0-5 = stanza index, 6 = finale
+  const isAnimatingRef = useRef(false);
+  const totalStanzas = 6;
   const { contextSafe } = useGSAP({ scope: containerRef });
 
   const introQuote = [
-    { text: "Life", type: "normal" }, { text: "would", type: "normal" }, { text: "be", type: "normal" },
-    { text: "such", type: "normal" }, { text: "a", type: "normal" }, { text: "bright place", type: "italic-1" }, 
-    { text: "if", type: "normal" }, { text: "I", type: "normal" }, { text: "was", type: "normal" },
-    { text: "allowed", type: "italic-2" }, { text: "to", type: "normal" }, { text: "love", type: "normal" },
-    { text: "you", type: "normal" },
+    { text: "Even", type: "normal" }, { text: "when", type: "normal" }, { text: "the", type: "normal" },
+    { text: "sky", type: "normal" }, { text: "is", type: "normal" }, { text: "made of iron", type: "italic-1" }, 
+    { text: "you", type: "normal" }, { text: "still", type: "normal" }, { text: "find", type: "normal" },
+    { text: "the strength", type: "italic-2" }, { text: "to", type: "normal" }, { text: "carry", type: "normal" },
+    { text: "the sun", type: "normal" },
   ];
 
   // --- 1. SPLICED PRELOADER ---
@@ -79,126 +83,178 @@ function App() {
 
   }, { scope: containerRef, dependencies: [isLoading] }); 
 
-  // --- 3. THE CLICK ANIMATION ---
-  const handleStart = contextSafe(() => {
-    if (!showClickPrompt || hasClicked) return;
-    setHasClicked(true);
-    
-    if (audioRef.current) audioRef.current.play(); 
+  // --- SHOW NEXT STANZA (smooth word-by-word reveal) ---
+  const showStanza = contextSafe((index: number) => {
+    const stanzas = gsap.utils.toArray(".scroll-stanza") as HTMLElement[];
+    const stanza = stanzas[index];
+    if (!stanza) return;
 
-    isAssembledRef.current = true;
-    gsap.killTweensOf(".mouse-layer");
-
-    const masterTl = gsap.timeline();
-    masterTl.to(".intro-container, .gradient-overlay, .click-prompt", { opacity: 0, duration: 1.2, ease: "power2.inOut" }, 0);
-    masterTl.to(".layer", { x: 0, y: 0, rotation: 0, opacity: 1, duration: 2.5, ease: "power3.out" }, 0);
-    masterTl.to(".mouse-layer", { x: 0, y: 0, duration: 2.5, ease: "power3.out" }, 0);
-    masterTl.to("#scroll-progress", { opacity: 0.8, duration: 1 }, "-=1");
-    masterTl.set(document.body, { overflowY: "auto" });
-
-    // --- SEQUENCED SCROLL TIMELINE (The Fix!) ---
-    const scrollSequence = gsap.timeline({
-      scrollTrigger: { 
-        trigger: ".scroll-track", 
-        start: "top top", 
-        end: "bottom bottom", 
-        scrub: 2 
+    const words = stanza.querySelectorAll(".letter-word");
+    const tl = gsap.timeline({
+      onComplete: () => {
+        isAnimatingRef.current = false;
+        setShowNextIndicator(true); 
       }
     });
 
-    // 1st: Mountain moves and zooms (OUTSIDE THE LOOP!)
-    scrollSequence.to(".mountain-wrapper", {
-      x: "0%",
-      y: "30%",
-      scale: 1.5,
-      duration: 5, 
-      ease: "power1.inOut"
+    // Reveal words one-by-one
+    tl.to(words, {
+      opacity: 1,
+      y: 0,
+      stagger: 0.06,
+      duration: 0.4,
+      ease: "power2.out"
     });
-    
-    // Fade in radial blur overlay WITH the mountain move
-    scrollSequence.to(".radial-blur-overlay", {
-      opacity: 1, 
-      duration: 5,
+  });
+
+  // --- FADE OUT CURRENT STANZA ---
+  const hideStanza = contextSafe((index: number) => {
+    const stanzas = gsap.utils.toArray(".scroll-stanza") as HTMLElement[];
+    const stanza = stanzas[index];
+    if (!stanza) return;
+
+    return gsap.to(stanza, {
+      opacity: 0,
+      y: -20,
+      duration: 0.8,
+      ease: "power2.inOut"
+    });
+  });
+
+  // --- PLAY THE GRAND FINALE ---
+  const playFinale = contextSafe(() => {
+    const finaleTl = gsap.timeline({
+      onComplete: () => { isAnimatingRef.current = false; }
+    });
+
+    // Cliff slides down
+    finaleTl.to(".cliff-image", {
+      y: "100%",
+      duration: 3,
+      ease: "power2.inOut"
+    });
+
+    // Both overlays fade out
+    finaleTl.to([".scrim-overlay", ".radial-blur-overlay"], {
+      opacity: 0,
+      duration: 2.5,
       ease: "power2.inOut"
     }, "<");
 
-    // 2nd: Cliff pops up
-    scrollSequence.to(".cliff-image", {
-      x: "25%",
-      y: "30%", 
-      scale: 1.5,
-      duration: 5, 
-      ease: "power2.out"
-    });
-
-    // 3rd: The Camera "Focus Pull" (Background blurs)
-    scrollSequence.fromTo(".mountain-wrapper", 
-      { filter: "blur(0px) brightness(1)" }, 
-      { filter: "blur(5px) brightness(0.8)", duration: 1, ease: "power2.inOut" }
-    );
-
-    // 4th: Fade in the dark scrim behind the text
-    scrollSequence.to(".scrim-overlay", {
-      opacity: 1,
-      duration: 1,
-      ease: "power2.inOut"
-    }, "<"); 
-
-    // --- NOW WE START THE LOOP FOR THE TEXT! ---
-    const stanzas = gsap.utils.toArray(".scroll-stanza");
-    
-    stanzas.forEach((stanza, index) => {
-      const words = (stanza as HTMLElement).querySelectorAll(".letter-word");
-
-      // Reveal words one-by-one
-      scrollSequence.to(words, {
-        opacity: 1, 
-        y: 0, 
-        stagger: 0.1, 
-        duration: 0.2, 
-        ease: "power1.out"
-      }, "+=1.5"); 
-
-      // Fade paragraph out if it's not the last one
-      scrollSequence.to(stanza, {
-        opacity: 0, 
-        y: -20, 
-        duration: 1.5, 
-        ease: "power2.inOut"
-      }, "+=2");
-    });
-
-    // --- THE GRAND FINALE (Reverting to the original scene) ---
-    // 1. The Cliff slides back down into the abyss
-    scrollSequence.to(".cliff-image", {
-      y: "100%", 
-      duration: 4, 
-      ease: "power2.inOut"
-    }, "+=1"); // Starts a moment after the final text fades away
-
-    // 2. Both dark overlays completely fade out
-    scrollSequence.to([".scrim-overlay", ".radial-blur-overlay"], {
-      opacity: 0,
-      duration: 3,
-      ease: "power2.inOut"
-    }, "<"); // The "<" makes this happen exactly as the cliff goes down
-
-    // 3. The Mountain perfectly restores itself to the original snapped position!
-    scrollSequence.to(".mountain-wrapper", {
+    // Mountain restores
+    finaleTl.to(".mountain-wrapper", {
       x: "0%",
       y: "0%",
       scale: 1,
       filter: "blur(0px) brightness(1)",
-      duration: 10, 
+      duration: 4,
       ease: "power2.inOut"
     }, "<");
 
-    // --- TOP PROGRESS BAR (Runs independently) ---
-    gsap.to("#scroll-progress", {
-      scaleX: 1, 
-      ease: "none",
-      scrollTrigger: { trigger: ".scroll-track", start: "top top", end: "bottom bottom", scrub: 0.1 }
-    });
+    // Progress bar fills
+    finaleTl.to("#scroll-progress", { scaleX: 1, duration: 2, ease: "power2.inOut" }, 0);
+  });
+
+  // --- 3. THE CLICK HANDLER (handles both "Continue" and stanza advancing) ---
+  const handleClick = contextSafe(() => {
+    // Ignore clicks while animating
+    if (isAnimatingRef.current) return;
+
+    // Immediately hide the "next" indicator
+    setShowNextIndicator(false);
+
+    // --- FIRST CLICK: The "Continue" assembly ---
+    if (!hasClicked && showClickPrompt) {
+      setHasClicked(true);
+      isAnimatingRef.current = true;
+      
+      if (audioRef.current) audioRef.current.play(); 
+
+      isAssembledRef.current = true;
+      gsap.killTweensOf(".mouse-layer");
+
+      const masterTl = gsap.timeline();
+
+      // Fade out intro
+      masterTl.to(".intro-container, .gradient-overlay, .click-prompt", { opacity: 0, duration: 1.2, ease: "power2.inOut" }, 0);
+      // Assemble layers
+      masterTl.to(".layer", { x: 0, y: 0, rotation: 0, opacity: 1, duration: 2.5, ease: "power3.out" }, 0);
+      masterTl.to(".mouse-layer", { x: 0, y: 0, duration: 2.5, ease: "power3.out" }, 0);
+      // Show progress bar
+      masterTl.to("#scroll-progress", { opacity: 0.8, duration: 1 }, "-=1");
+
+      // Mountain zoom + radial blur
+      masterTl.to(".mountain-wrapper", {
+        x: "0%", y: "30%", scale: 1.5,
+        duration: 3, ease: "power2.inOut"
+      });
+      masterTl.to(".radial-blur-overlay", {
+        opacity: 1, duration: 3, ease: "power2.inOut"
+      }, "<");
+
+      // Cliff pops up
+      masterTl.to(".cliff-image", {
+        x: "25%", y: "30%", scale: 1.5,
+        duration: 3, ease: "power2.out"
+      });
+
+      // Camera focus pull (background blurs)
+      masterTl.fromTo(".mountain-wrapper", 
+        { filter: "blur(0px) brightness(1)" }, 
+        { filter: "blur(5px) brightness(0.8)", duration: 1.5, ease: "power2.inOut" }
+      );
+
+      // Fade in scrim behind text
+      masterTl.to(".scrim-overlay", {
+        opacity: 1, duration: 1.5, ease: "power2.inOut"
+      }, "<"); 
+
+      // Progress: small step for the setup phase
+      masterTl.to("#scroll-progress", { scaleX: 0.1, duration: 1, ease: "none" }, "<");
+
+      // After setup, show first stanza
+      masterTl.add(() => {
+        currentStanzaRef.current = 0;
+        showStanza(0);
+      });
+
+      return;
+    }
+
+    // --- SUBSEQUENT CLICKS: Advance stanzas ---
+    if (!hasClicked || currentStanzaRef.current < 0) return;
+
+    const current = currentStanzaRef.current;
+
+    // Already past the last stanza (finale played)
+    if (current >= totalStanzas) return;
+
+    isAnimatingRef.current = true;
+
+    // Update progress bar smoothly
+    const progressTarget = 0.1 + ((current + 1) / totalStanzas) * 0.9;
+    gsap.to("#scroll-progress", { scaleX: progressTarget, duration: 0.8, ease: "power2.out" });
+
+    // If this is the last stanza, fade it out then play finale
+    if (current === totalStanzas - 1) {
+      const hideTween = hideStanza(current);
+      if (hideTween) {
+        hideTween.then(() => {
+          currentStanzaRef.current = totalStanzas;
+          playFinale();
+        });
+      }
+      return;
+    }
+
+    // Fade out current, then reveal next
+    const hideTween = hideStanza(current);
+    if (hideTween) {
+      hideTween.then(() => {
+        currentStanzaRef.current = current + 1;
+        showStanza(current + 1);
+      });
+    }
   });
 
   // --- 4. MOUSE HOVER PARALLAX ---
@@ -216,9 +272,9 @@ function App() {
   return (
     <main 
       ref={containerRef} 
-      onClick={handleStart}
+      onClick={handleClick}
       onMouseMove={handleMouseMove} 
-      className={`bg-[#0a0a0a] text-[#e0e0e0] font-cinematic relative select-none ${showClickPrompt && !hasClicked ? 'cursor-pointer' : ''}`}
+      className={`bg-[#0a0a0a] text-[#e0e0e0] font-cinematic relative select-none h-screen overflow-hidden ${showClickPrompt && !hasClicked ? 'cursor-pointer' : ''} ${hasClicked && currentStanzaRef.current < totalStanzas ? 'cursor-pointer' : ''}`}
     >
       {/* THIS HIDES THE UGLY SIDE SCROLLBAR PERMANENTLY */}
       <style>{`
@@ -237,35 +293,33 @@ function App() {
         </div>
       </div>
 
-      <div className="scroll-track h-[1500vh] w-full"></div>
-
       {/* THE FIXED CAMERA PORTAL */}
       <div className="fixed inset-0 w-full h-screen pointer-events-none">
         
-        <section className="mountain-wrapper absolute inset-0 w-full h-full origin-center">
-          <div className="mouse-layer absolute inset-0 w-full h-full" data-speed="-2">
-            <img src="/layer6.png" className="layer absolute inset-0 w-full h-full object-contain object-center -translate-x-[25%] translate-y-[30%] -rotate-3" alt="L6" />
+        <section className="mountain-wrapper absolute inset-0 w-full h-full origin-center will-change-transform will-change-[filter]">
+          <div className="mouse-layer absolute inset-0 w-full h-full will-change-transform" data-speed="-2">
+            <img src="/layer6.png" className="layer absolute inset-0 w-full h-full object-contain object-center -translate-x-[25%] translate-y-[30%] -rotate-3 will-change-transform will-change-opacity" alt="L6" />
           </div>
-          <div className="mouse-layer absolute inset-0 w-full h-full" data-speed="-1.5">
-            <img src="/layer4.png" className="layer absolute inset-0 w-full h-full object-contain object-center -translate-x-[40%] -rotate-6" alt="L4" />
+          <div className="mouse-layer absolute inset-0 w-full h-full will-change-transform" data-speed="-1.5">
+            <img src="/layer4.png" className="layer absolute inset-0 w-full h-full object-contain object-center -translate-x-[40%] -rotate-6 will-change-transform will-change-opacity" alt="L4" />
           </div>
-          <div className="mouse-layer absolute inset-0 w-full h-full" data-speed="1.5">
-            <img src="/layer1.png" className="layer absolute inset-0 w-full h-full object-contain object-center -translate-x-[30%] -translate-y-[20%] -rotate-12" alt="L1" />
+          <div className="mouse-layer absolute inset-0 w-full h-full will-change-transform" data-speed="1.5">
+            <img src="/layer1.png" className="layer absolute inset-0 w-full h-full object-contain object-center -translate-x-[30%] -translate-y-[20%] -rotate-12 will-change-transform will-change-opacity" alt="L1" />
           </div>
-          <div className="mouse-layer absolute inset-0 w-full h-full" data-speed="1.2">
-            <img src="/layer7.png" className="layer absolute inset-0 w-full h-full object-contain object-center translate-x-[25%] translate-y-[25%] rotate-6" alt="L7" />
+          <div className="mouse-layer absolute inset-0 w-full h-full will-change-transform" data-speed="1.2">
+            <img src="/layer7.png" className="layer absolute inset-0 w-full h-full object-contain object-center translate-x-[25%] translate-y-[25%] rotate-6 will-change-transform will-change-opacity" alt="L7" />
           </div>
-          <div className="mouse-layer absolute inset-0 w-full h-full" data-speed="-1">
-            <img src="/layer2.png" className="layer absolute inset-0 w-full h-full object-contain object-center translate-x-[40%] -translate-y-[10%] rotate-6" alt="L2" />
+          <div className="mouse-layer absolute inset-0 w-full h-full will-change-transform" data-speed="-1">
+            <img src="/layer2.png" className="layer absolute inset-0 w-full h-full object-contain object-center translate-x-[40%] -translate-y-[10%] rotate-6 will-change-transform will-change-opacity" alt="L2" />
           </div>
-          <div className="mouse-layer absolute inset-0 w-full h-full" data-speed="0.8">
-            <img src="/layer5.png" className="layer absolute inset-0 w-full h-full object-contain object-center translate-x-[35%] rotate-12" alt="L5" />
+          <div className="mouse-layer absolute inset-0 w-full h-full will-change-transform" data-speed="0.8">
+            <img src="/layer5.png" className="layer absolute inset-0 w-full h-full object-contain object-center translate-x-[35%] rotate-12 will-change-transform will-change-opacity" alt="L5" />
           </div>
-          <div className="mouse-layer absolute inset-0 w-full h-full" data-speed="-0.5">
-            <img src="/layer8.png" className="layer absolute inset-0 w-full h-full object-contain object-center translate-y-[40%] -rotate-6" alt="L8" />
+          <div className="mouse-layer absolute inset-0 w-full h-full will-change-transform" data-speed="-0.5">
+            <img src="/layer8.png" className="layer absolute inset-0 w-full h-full object-contain object-center translate-y-[40%] -rotate-6 will-change-transform will-change-opacity" alt="L8" />
           </div>
-          <div className="mouse-layer absolute inset-0 w-full h-full" data-speed="2">
-            <img src="/layer3.png" className="layer absolute inset-0 w-full h-full object-contain object-center -translate-y-[30%] rotate-3" alt="L3" />
+          <div className="mouse-layer absolute inset-0 w-full h-full will-change-transform" data-speed="2">
+            <img src="/layer3.png" className="layer absolute inset-0 w-full h-full object-contain object-center -translate-y-[30%] rotate-3 will-change-transform will-change-opacity" alt="L3" />
           </div>
         </section>
 
@@ -275,7 +329,6 @@ function App() {
           style={{
             backdropFilter: "blur(12px) brightness(0.4)",
             WebkitBackdropFilter: "blur(12px) brightness(0.4)",
-            // This cuts the soft, transparent hole in the center of the blur!
             maskImage: "radial-gradient(circle at center, transparent 10%, black 80%)",
             WebkitMaskImage: "radial-gradient(circle at center, transparent 10%, black 80%)"
           }}
@@ -313,36 +366,37 @@ function App() {
           {/* We use CSS Grid so every paragraph stacks directly on top of each other! */}
           <div className="relative text-lg md:text-xl md:leading-loose tracking-wide max-w-2xl w-full px-6 grid grid-cols-1 grid-rows-1 place-items-center text-center">
             
-            <p className="scroll-stanza col-start-1 row-start-1 w-full">
-              {renderWords("I imagine it sometimes in the quiet parts of the day", "italic")}
-              {renderWords("—how simple everything would feel if I did not have to hold myself back.")}
-              {renderWords("If I could reach for you without thinking twice,", "italic")}
-              {renderWords("if saying your name did not feel like something I had to soften or hide.")}
+            <p className="scroll-stanza col-start-1 row-start-1 w-full flex flex-col items-center">
+              <span className="block mb-6">{renderWords("I see the quiet battles you fight when the world is looking away,", "italic text-white/80")}</span>
+              <span className="block mb-10">{renderWords("the way you gather the pieces of yourself on the days that try to break you.")}</span>
+              <span className="block mb-4">{renderWords("You carry storms inside your chest,", "italic text-white/80")}</span>
+              <span className="block">{renderWords("yet somehow you still speak to me with all the gentleness of morning rain.")}</span>
             </p>
 
-            <p className="scroll-stanza col-start-1 row-start-1 w-full font-bold">
-              {renderWords("I think the world would look different.")}
+            <p className="scroll-stanza col-start-1 row-start-1 w-full font-bold text-xl md:text-2xl">
+              {renderWords("There is such a beautiful, fierce spirit in you.")}
             </p>
 
-            <p className="scroll-stanza col-start-1 row-start-1 w-full">
-              {renderWords("Not in ways anyone else would notice. But in the small ways that matter to me—")}
-              {renderWords("the kind of brightness that comes from knowing I do not have to pretend my feelings are smaller than they really are.", "italic")}
+            <p className="scroll-stanza col-start-1 row-start-1 w-full flex flex-col items-center">
+              <span className="block mb-6">{renderWords("To hurt so deeply and still choose kindness,")}</span>
+              <span className="block mb-10">{renderWords("to carry the weight of winter and still bloom—")}</span>
+              <span className="block mb-4">{renderWords("that is a quiet, breathtaking kind of courage.", "italic text-white/80")}</span>
+              <span className="block">{renderWords("And I am so entirely in love with you.")}</span>
             </p>
 
-            <p className="scroll-stanza col-start-1 row-start-1 w-full font-bold">
-              {renderWords("But instead, I carry it quietly.")}
+            <p className="scroll-stanza col-start-1 row-start-1 w-full font-bold text-xl md:text-2xl">
+              {renderWords("You are my favorite person in the world, Eya.")}
             </p>
 
-            <p className="scroll-stanza col-start-1 row-start-1 w-full">
-              {renderWords("This love that stays somewhere between what I feel and what I am allowed to say.", "font-bold")}
-              {/* Notice the exact formatting passed into the helper function here */}
-              {renderWords("The kind that lives in pauses, in unfinished sentences, in moments where I almost speak and then choose not to.", "underline underline-offset-[6px] decoration-[1px]")}
+            <p className="scroll-stanza col-start-1 row-start-1 w-full flex flex-col items-center">
+              <span className="block mb-8">{renderWords("Please don't ever apologize for needing to rest your weary hands,", "font-semibold")}</span>
+              <span className="block mb-4">{renderWords("for even the oceans have tides,", "italic text-white/80")}</span>
+              <span className="block">{renderWords("and my love for you doesn't need you to be unbreakable.")}</span>
             </p>
 
-            {/* This final stanza doesn't fade out at the end, it stays on screen forever! */}
-            <p className="scroll-stanza col-start-1 row-start-1 w-full">
-              {renderWords("And sometimes I wonder")}
-              {renderWords("how light life would feel if loving you was not something I had to keep to myself.", "font-bold underline underline-offset-[6px] decoration-[1px]")}
+            <p className="scroll-stanza col-start-1 row-start-1 w-full flex flex-col items-center">
+              <span className="block mb-6">{renderWords("I am endlessly in awe of who you are,", "italic")}</span>
+              <span className="block">{renderWords("and I will always, always be here to hold you through the dark.", "font-bold")}</span>
             </p>
 
           </div>
@@ -353,6 +407,24 @@ function App() {
           id="scroll-progress" 
           className="fixed top-0 left-0 h-[3px] w-full bg-[#e0e0e0] z-[100] origin-left scale-x-0 opacity-0 pointer-events-none"
         ></div>
+
+        {/* NEW "NEXT" INDICATOR */}
+        <div 
+          className={`fixed bottom-12 left-1/2 -translate-x-1/2 z-50 transition-opacity duration-700 pointer-events-none 
+          ${showNextIndicator && currentStanzaRef.current < totalStanzas - 1 ? 'opacity-60' : 'opacity-0'} 
+          ${currentStanzaRef.current === totalStanzas - 1 && showNextIndicator ? 'opacity-0' : ''}`}
+        >
+          <svg 
+            xmlns="http://www.w3.org/2000/svg" 
+            className="w-8 h-8 animate-bounce text-[#e0e0e0]" 
+            fill="none" 
+            viewBox="0 0 24 24" 
+            stroke="currentColor" 
+            strokeWidth={1.5}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+          </svg>
+        </div>
 
       </div>
     </main>
